@@ -1,86 +1,98 @@
-import speech_recognition as sr
+import google.generativeai as genai
+import os
 import pyttsx3
-import requests
-import time
+import speech_recognition as sr
 
-# Initialize text-to-speech engine
-def speak(text):
-    engine = pyttsx3.init()
+# Set up the API key and search engine ID directly in the code
+API_KEY = "AIzaSyCRpTG2IOVryOIyCfJHIMsx1wbbNRS5ZFg"  # Your Google API Key
+SEARCH_ENGINE_ID = "d523ad25757f44b96"  # Your Google Search Engine ID
+genai.configure(api_key=API_KEY)
+
+# Initialize the text-to-speech engine
+engine = pyttsx3.init()
+
+def set_voice_by_name(name):
+    """Set the TTS voice to one matching the given name."""
+    voices = engine.getProperty('voices')
+    for voice in voices:
+        if name.lower() in voice.name.lower():
+            engine.setProperty('voice', voice.id)
+            print(f"Using voice: {voice.name}")
+            return
+    print("Voice not found, using default.")
+
+def list_available_voices():
+    """List available TTS voices."""
+    voices = engine.getProperty('voices')
+    print("Available voices:")
+    for voice in voices:
+        print(f"- {voice.name}")
+
+def speak(text, rate=150):
+    """Convert text to speech."""
+    engine.setProperty('rate', rate)
     engine.say(text)
     engine.runAndWait()
 
-# Listen for commands from the microphone
-def listen_for_commands():
+def take_command():
+    """Listen for a command and return it as text."""
     recognizer = sr.Recognizer()
     with sr.Microphone() as source:
+        print("Adjusting for ambient noise...")
+        recognizer.adjust_for_ambient_noise(source)
         print("Listening...")
         audio = recognizer.listen(source)
-        try:
-            command = recognizer.recognize_google(audio)
-            print(f"You said: {command}")
-            return command
-        except sr.UnknownValueError:
-            print("Sorry, I did not understand that.")
-            return None
-        except sr.RequestError:
-            print("Could not request results from Google Speech Recognition service.")
-            return None
 
-# Function to ask a question using OpenAI API
-def ask_question(question):
-    api_key = "YOUR_OPENAI_API_KEY"  # Replace with your actual API key
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json'
-    }
-    data = {
-        'model': 'gpt-3.5-turbo',  # Specify the model you want to use
-        'messages': [{'role': 'user', 'content': question}]
-    }
-    
-    response = requests.post('https://api.openai.com/v1/chat/completions', headers=headers, json=data)
-    
-    if response.status_code == 200:
-        answer = response.json()['choices'][0]['message']['content']
-        return answer
-    else:
-        return "Sorry, I couldn't get an answer to that."
+    try:
+        command = recognizer.recognize_google(audio)
+        print(f"You said: {command}")
+        return command
+    except sr.UnknownValueError:
+        print("Sorry, I could not understand the audio.")
+        return None
+    except sr.RequestError:
+        print("Could not request results from the service.")
+        return None
 
-# Reminder storage
-reminders = []
+def change_voice(command):
+    """Change the voice based on user command."""
+    if "change voice to" in command.lower():
+        voice_name = command.lower().replace("change voice to ", "")
+        set_voice_by_name(voice_name)
 
-# Function to set a reminder
-def set_reminder(reminder):
-    reminders.append(reminder)
-    speak(f"Reminder set for: {reminder}")
+def generate_response(command):
+    """Generate a response using the Generative AI API."""
+    model = genai.GenerativeModel("gemini-1.5-flash")  # Adjust the model name if needed
+    response = model.generate_content(command)
+    return response.text
 
-# Function to check reminders
-def check_reminders():
-    if reminders:
-        speak("Here are your reminders:")
-        for reminder in reminders:
-            speak(reminder)
-    else:
-        speak("You have no reminders.")
+def main():
+    set_voice_by_name("Microsoft Zira Desktop")  # Default voice
 
-# Main loop to listen for commands
-while True:
-    command = listen_for_commands()
-    if command:
-        if "hello" in command.lower():
-            speak("Hello! How can I assist you?")
-        elif "time" in command.lower():
-            current_time = time.strftime("%H:%M")
-            speak(f"The current time is {current_time}.")
-        elif "remind me to" in command.lower():
-            reminder = command.lower().replace("remind me to", "").strip()
-            set_reminder(reminder)
-        elif "show reminders" in command.lower():
-            check_reminders()
-        elif "what is" in command.lower():
-            question = command.lower().replace("what is", "").strip()
-            answer = ask_question(question)
-            speak(answer)
-        elif "stop" in command.lower():
+    while True:
+        print("Please say your command (type 'exit' to quit):")
+        command = take_command()
+        if command is None:
+            continue  # Retry if command was not understood
+        if command.lower() == "exit":
             speak("Goodbye!")
             break
+
+        # Change voice if the command is recognized
+        change_voice(command)
+
+        # List available voices
+        if command.lower() == "list voices":
+            list_available_voices()
+            continue
+
+        # Generate content using the Generative AI
+        response_text = generate_response(command)
+
+        # Print and speak the generated content
+        print("Generated Content:")
+        print(response_text)
+        speak(response_text, rate=180)  # Adjust the speech rate here as needed
+
+if __name__ == "__main__":
+    main()

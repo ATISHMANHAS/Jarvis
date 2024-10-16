@@ -1,3 +1,4 @@
+#This code is given to D1
 import google.generativeai as genai
 import os
 import pyttsx3
